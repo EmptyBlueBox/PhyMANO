@@ -1,4 +1,7 @@
 smplx
-numpy == 1.23.1
 rerun-sdk
 coacd
+scipy
+chumpy
+numpy == 1.23.1
+mujoco
