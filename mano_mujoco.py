@@ -65,7 +65,7 @@ def orient_faces_outward(vertices, faces):
     return np.array(oriented_faces)
 
 
-def generate_mujoco_xml(submeshes, colors):
+def generate_mujoco_xml(submeshes, joint_positions, colors):
     """
     Generates a MuJoCo XML string and mesh assets for simulating submeshes.
 
@@ -80,6 +80,8 @@ def generate_mujoco_xml(submeshes, colors):
     - submeshes (list of dict): A list of submesh dictionaries. Each dict should
       contain 'vertices' (np.ndarray, shape=(N, 3)), 'faces' (np.ndarray,
       shape=(M, 3)), and 'joint_idx' (int).
+    - joint_positions (np.ndarray, shape=(16, 3)): The positions of the 16
+      MANO joints.
     - colors (list of list of int): A list of RGB colors for the submeshes,
       indexed by joint index.
 
@@ -89,10 +91,20 @@ def generate_mujoco_xml(submeshes, colors):
     """
     assets = {}
     asset_xml_parts = []
-    body_xml_parts = []
+    body_xml_parts = [""] * 16  # To be filled later
+    actuator_xml_parts = []
+    submesh_centers = np.zeros((16, 3))
     density = 980  # kg/m^3
+    parents = [-1, 0, 1, 2, 0, 4, 5, 0, 7, 8, 0, 10, 11, 0, 13, 14]
 
-    for i, submesh in enumerate(submeshes):
+    # Pre-process submeshes and create assets
+    submeshes_by_joint = {submesh["joint_idx"]: submesh for submesh in submeshes}
+
+    for i in range(16):  # Iterate through all possible joint indices
+        submesh = submeshes_by_joint.get(i)
+        if not submesh:
+            continue
+
         # Compute the convex hull of the vertices to get the faces for the hull
         if submesh["vertices"].shape[0] >= 4:
             hull = ConvexHull(submesh["vertices"])
@@ -103,6 +115,7 @@ def generate_mujoco_xml(submeshes, colors):
 
         # Center the vertices of the submesh for the asset definition
         center = np.mean(submesh["vertices"], axis=0)
+        submesh_centers[i] = center
         translated_vertices = submesh["vertices"] - center
 
         # Ensure face normals point outwards for correct rendering
@@ -133,30 +146,62 @@ def generate_mujoco_xml(submeshes, colors):
         assets[obj_filename] = obj_data.encode()
 
         asset_xml_parts.append(f'<mesh name="mesh_{i}" file="{obj_filename}"/>')
-
         color = colors[submesh["joint_idx"]]
         color_str = f"{color[0] / 255:.3f} {color[1] / 255:.3f} {color[2] / 255:.3f} 1"
-
-        # Position the body at the original center of the submesh
-        pos_str = f"{center[0]:.3f} {center[1]:.3f} {center[2]:.3f}"
         cm_pos_str = f"{cm[0]:.3f} {cm[1]:.3f} {cm[2]:.3f}"
 
-        body_xml_parts.append(
-            f"""
-        <body name="body_{i}" pos="{pos_str}">
-            <freejoint/>
+        # Determine body position and joint information
+        parent_idx = parents[i]
+        if parent_idx == -1:  # Root body (palm)
+            pos_str = f"{center[0]:.3f} {center[1]:.3f} {center[2]:.3f}"
+            joint_xml = "<freejoint/>"
+        else:
+            parent_center = submesh_centers[parent_idx]
+            relative_pos = center - parent_center
+            pos_str = (
+                f"{relative_pos[0]:.3f} {relative_pos[1]:.3f} {relative_pos[2]:.3f}"
+            )
+
+            # Joint position relative to the child's body frame
+            joint_pos = joint_positions[i] - center
+            joint_pos_str = f"{joint_pos[0]:.3f} {joint_pos[1]:.3f} {joint_pos[2]:.3f}"
+            joint_xml = f'<joint name="joint_{i}" type="ball" pos="{joint_pos_str}" limited="false" stiffness="200" damping="5"/>'
+            actuator_xml_parts.append(
+                f'<motor name="motor_{i}" joint="joint_{i}" ctrllimited="true" ctrlrange="-1.0 1.0" gear="1"/>'
+            )
+
+        body_xml_parts[i] = f"""<body name="body_{i}" pos="{pos_str}">
+            {joint_xml}
             <inertial pos="{cm_pos_str}" mass="{mass:.6f}" fullinertia="{inertia_str}"/>
-            <geom type="mesh" mesh="mesh_{i}" rgba="{color_str}" solimp="0.9 0.95 0.001" solref="0.02 0.2"/>
-        </body>"""
-        )
+            <geom type="mesh" mesh="mesh_{i}" rgba="{color_str}" contype="1" conaffinity="2"/>"""
+
+    # Assemble the nested body XML structure
+    # Start with closing tags for all bodies
+    body_xml_tree = [""] * 16
+    for i in range(15, -1, -1):
+        if body_xml_parts[i]:  # If the body exists
+            body_xml_tree[i] += "</body>"
+            parent_idx = parents[i]
+            if parent_idx != -1:
+                # Prepend this body's XML to its parent's closing tag
+                body_xml_tree[parent_idx] = (
+                    body_xml_parts[i] + body_xml_tree[i] + body_xml_tree[parent_idx]
+                )
+
+    # The final body XML is the content of the root body (joint 0)
+    root_body_xml = body_xml_parts[0] + body_xml_tree[0]
 
     asset_xml = "\n".join(asset_xml_parts)
-    body_xml = "\n".join(body_xml_parts)
+    actuator_xml = "\n".join(actuator_xml_parts)
 
     xml = f"""
     <mujoco>
         <compiler autolimits="true"/>
-        <option gravity="0 0 -9.81" timestep="0.002"/>
+        <option gravity="0 0 -9.81" timestep="0.001"/>
+
+        <default>
+            <geom solimp="0.9 0.95 0.001" solref="0.02 1"/>
+        </default>
 
         <visual>
             <headlight active="0" ambient="0.3 0.3 0.3" diffuse="0.4 0.4 0.4" specular="0.1 0.1 0.1"/>
@@ -170,9 +215,13 @@ def generate_mujoco_xml(submeshes, colors):
 
         <worldbody>
             <light pos="0 0 5" dir="0 0 -1" diffuse="0.8 0.8 0.8" specular="0.2 0.2 0.2"/>
-            <geom type="plane" size="2 2 0.1" rgba="0.8 0.8 0.8 1" name="ground"/>
-            {body_xml}
+            <geom type="plane" size="2 2 0.1" rgba="0.8 0.8 0.8 1" name="ground" contype="2" conaffinity="1"/>
+            {root_body_xml}
         </worldbody>
+
+        <actuator>
+            {actuator_xml}
+        </actuator>
     </mujoco>
     """
     return xml.strip(), assets
@@ -199,7 +248,7 @@ def main():
         "betas": torch.tensor(hand_shape, dtype=torch.float32),
     }
     # Generate submeshes and other MANO data using the utility function
-    submeshes, _, _, _, _ = generate_mano_submeshes(
+    submeshes, _, _, hand_joints, _ = generate_mano_submeshes(
         is_rhand=False,
         **hand_parms,
     )
@@ -226,21 +275,24 @@ def main():
     ]
 
     # --- 2. Setup and run MuJoCo simulation ---
-
-    xml, assets = generate_mujoco_xml(submeshes, colors)
+    xml, assets = generate_mujoco_xml(submeshes, hand_joints[0], colors)
     model = mujoco.MjModel.from_xml_string(xml, assets=assets)
     data = mujoco.MjData(model)
 
     print("\nStarting MuJoCo simulation. Close the viewer to exit.")
     with mujoco.viewer.launch_passive(model, data) as viewer:
-        reset_interval_seconds = 3.0  # Reset simulation every 3 seconds
+        last_update_time = time.time()
+        control_update_interval = 0.1  # Update controls every 100ms
 
         while viewer.is_running():
             step_start = time.time()
 
-            # If the simulation time exceeds the interval, reset it.
-            if data.time >= reset_interval_seconds:
-                mujoco.mj_resetData(model, data)
+            current_time = time.time()
+            if current_time - last_update_time > control_update_interval:
+                # Apply random control signals to the actuators
+                random_ctrl = np.random.uniform(low=-1.0, high=1.0, size=model.nu)
+                data.ctrl[:] = random_ctrl
+                last_update_time = current_time
 
             mujoco.mj_step(model, data)
 

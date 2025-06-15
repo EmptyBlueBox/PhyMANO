@@ -16,6 +16,17 @@ Models
     └── MANO_LEFT.pkl
 ```
 
+The MANO joint order:
+
+```
+   15 - 14 - 13 - \ Thumb
+                   \
+   3-- 2 -- 1 ----- 0 Index
+    6 -- 5 -- 4 -- / Middle
+12 -- 11 -- 10 -- / Ring
+  9 -- 8 -- 7 -- / Pinky
+```
+
 ### Environment setup
 
 ```bash
