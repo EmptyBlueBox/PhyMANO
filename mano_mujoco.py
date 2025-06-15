@@ -1,4 +1,5 @@
 import io
+import os
 import time
 
 import mujoco
@@ -65,9 +66,9 @@ def orient_faces_outward(vertices, faces):
     return np.array(oriented_faces)
 
 
-def generate_mujoco_xml(submeshes, joint_positions, colors):
+def generate_mujoco_xml(submeshes, joint_positions, colors, mjcf_path, mesh_dir):
     """
-    Generates a MuJoCo XML string and mesh assets for simulating submeshes.
+    Generates a MuJoCo XML file and corresponding mesh assets, saving them to disk.
 
     This function creates an XML configuration for a MuJoCo simulation. It defines
     a world with gravity, a ground plane, and represents each submesh as a
@@ -75,6 +76,7 @@ def generate_mujoco_xml(submeshes, joint_positions, colors):
     Based on the convex hull and a given density, the mass, center of mass (position),
     and inertia tensor are calculated for each body. The bodies are positioned in space
     to form a complete hand shape based on the input submesh vertex locations.
+    The generated XML file and OBJ mesh files are saved to specified paths.
 
     Parameters:
     - submeshes (list of dict): A list of submesh dictionaries. Each dict should
@@ -84,12 +86,13 @@ def generate_mujoco_xml(submeshes, joint_positions, colors):
       MANO joints.
     - colors (list of list of int): A list of RGB colors for the submeshes,
       indexed by joint index.
-
-    Returns:
-    - str: The MuJoCo XML model as a string.
-    - dict: A dictionary of mesh assets, mapping filenames to OBJ data as bytes.
+    - mjcf_path (str): The path where the generated MJCF XML file will be saved.
+    - mesh_dir (str): The directory where the generated OBJ mesh files will be saved.
     """
-    assets = {}
+    # Create mesh directory if it doesn't exist
+    os.makedirs(mesh_dir, exist_ok=True)
+    mjcf_dir = os.path.dirname(mjcf_path)
+
     asset_xml_parts = []
     body_xml_parts = [""] * 16  # To be filled later
     actuator_xml_parts = []
@@ -143,9 +146,16 @@ def generate_mujoco_xml(submeshes, joint_positions, colors):
 
         obj_filename = f"submesh_{submesh['joint_idx']}.obj"
         obj_data = mesh_to_obj_string(translated_vertices, hull_faces)
-        assets[obj_filename] = obj_data.encode()
 
-        asset_xml_parts.append(f'<mesh name="mesh_{i}" file="{obj_filename}"/>')
+        # Save the mesh data to an OBJ file
+        obj_save_path = os.path.join(mesh_dir, obj_filename)
+        with open(obj_save_path, "w") as f:
+            f.write(obj_data)
+
+        # Use a relative path for the mesh file in the XML
+        mesh_xml_path = os.path.relpath(obj_save_path, mjcf_dir)
+        asset_xml_parts.append(f'<mesh name="mesh_{i}" file="{mesh_xml_path}"/>')
+
         color = colors[submesh["joint_idx"]]
         color_str = f"{color[0] / 255:.3f} {color[1] / 255:.3f} {color[2] / 255:.3f} 1"
         cm_pos_str = f"{cm[0]:.3f} {cm[1]:.3f} {cm[2]:.3f}"
@@ -224,7 +234,11 @@ def generate_mujoco_xml(submeshes, joint_positions, colors):
         </actuator>
     </mujoco>
     """
-    return xml.strip(), assets
+    with open(mjcf_path, "w") as f:
+        f.write(xml.strip())
+
+    print(f"MJCF model saved to {mjcf_path}")
+    print(f"Mesh files saved in {mesh_dir}")
 
 
 def main():
@@ -274,9 +288,18 @@ def main():
         [56, 142, 60],
     ]
 
-    # --- 2. Setup and run MuJoCo simulation ---
-    xml, assets = generate_mujoco_xml(submeshes, hand_joints[0], colors)
-    model = mujoco.MjModel.from_xml_string(xml, assets=assets)
+    # --- 2. Generate MuJoCo model ---
+    # Define paths for saving the model and meshes
+    mjcf_dir = "Models/mjcf"
+    mesh_dir = os.path.join(mjcf_dir, "mesh")
+    mjcf_path = os.path.join(mjcf_dir, "hand.xml")
+
+    # Generate and save the MuJoCo model files
+    generate_mujoco_xml(submeshes, hand_joints[0], colors, mjcf_path, mesh_dir)
+
+    # --- 3. Run MuJoCo simulation ---
+    # Load the model from the saved MJCF file
+    model = mujoco.MjModel.from_xml_path(mjcf_path)
     data = mujoco.MjData(model)
 
     print("\nStarting MuJoCo simulation. Close the viewer to exit.")
