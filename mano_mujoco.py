@@ -5,6 +5,7 @@ import mujoco
 import mujoco.viewer
 import numpy as np
 import torch
+import trimesh
 from scipy.spatial import ConvexHull
 
 from config import hand_pose, hand_shape, num_frames_hand
@@ -70,8 +71,9 @@ def generate_mujoco_xml(submeshes, colors):
 
     This function creates an XML configuration for a MuJoCo simulation. It defines
     a world with gravity, a ground plane, and represents each submesh as a
-    free-floating body. For simulation, each submesh is represented as its
-    convex hull, which is computed explicitly. The bodies are positioned in space
+    free-floating body. For each submesh, its convex hull is computed.
+    Based on the convex hull and a given density, the mass, center of mass (position),
+    and inertia tensor are calculated for each body. The bodies are positioned in space
     to form a complete hand shape based on the input submesh vertex locations.
 
     Parameters:
@@ -88,6 +90,7 @@ def generate_mujoco_xml(submeshes, colors):
     assets = {}
     asset_xml_parts = []
     body_xml_parts = []
+    density = 980  # kg/m^3
 
     for i, submesh in enumerate(submeshes):
         # Compute the convex hull of the vertices to get the faces for the hull
@@ -105,6 +108,26 @@ def generate_mujoco_xml(submeshes, colors):
         # Ensure face normals point outwards for correct rendering
         hull_faces = orient_faces_outward(translated_vertices, hull_faces_unoriented)
 
+        # Create a trimesh object for physical properties calculation
+        hull_mesh = trimesh.Trimesh(vertices=translated_vertices, faces=hull_faces)
+        if not hull_mesh.is_watertight:
+            hull_mesh.fill_holes()
+
+        # Calculate physical properties based on the convex hull
+        mass = (
+            hull_mesh.mass
+        )  # mass is volume * density, trimesh assumes density=1 by default
+        mass *= density
+        inertia = (
+            hull_mesh.moment_inertia * density
+        )  # Inertia is calculated around the center of mass.
+        cm = hull_mesh.center_mass
+
+        # MuJoCo's `fullinertia` requires Ixx, Iyy, Izz, Ixy, Ixz, Iyz
+        ixx, iyy, izz = inertia[0, 0], inertia[1, 1], inertia[2, 2]
+        ixy, ixz, iyz = inertia[0, 1], inertia[0, 2], inertia[1, 2]
+        inertia_str = f"{ixx:.6e} {iyy:.6e} {izz:.6e} {ixy:.6e} {ixz:.6e} {iyz:.6e}"
+
         obj_filename = f"submesh_{submesh['joint_idx']}.obj"
         obj_data = mesh_to_obj_string(translated_vertices, hull_faces)
         assets[obj_filename] = obj_data.encode()
@@ -116,12 +139,14 @@ def generate_mujoco_xml(submeshes, colors):
 
         # Position the body at the original center of the submesh
         pos_str = f"{center[0]:.3f} {center[1]:.3f} {center[2]:.3f}"
+        cm_pos_str = f"{cm[0]:.3f} {cm[1]:.3f} {cm[2]:.3f}"
 
         body_xml_parts.append(
             f"""
         <body name="body_{i}" pos="{pos_str}">
             <freejoint/>
-            <geom type="mesh" mesh="mesh_{i}" rgba="{color_str}" mass="0.1" solimp="0.9 0.95 0.001" solref="0.02 1"/>
+            <inertial pos="{cm_pos_str}" mass="{mass:.6f}" fullinertia="{inertia_str}"/>
+            <geom type="mesh" mesh="mesh_{i}" rgba="{color_str}" solimp="0.9 0.95 0.001" solref="0.02 0.2"/>
         </body>"""
         )
 
