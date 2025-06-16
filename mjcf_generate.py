@@ -320,10 +320,6 @@ def main():
     # Generate and save the MuJoCo model files
     generate_mujoco_xml(submeshes, hand_joints[0], colors, mjcf_path, mesh_dir)
 
-    print(f"MJCF generation completed successfully!")
-    print(f"Model saved at: {mjcf_path}")
-    print(f"To visualize the model, run: python mjcf_viz.py")
-
 
 if __name__ == "__main__":
     main()
