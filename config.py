@@ -1,4 +1,5 @@
 import numpy as np
+import os
 
 num_frames_hand = 1
 hand_shape = np.array(
@@ -17,4 +18,14 @@ hand_shape = np.array(
         ]
     ]
 )
-hand_pose = np.zeros((num_frames_hand, 45))
+hand_rest_pose = np.zeros((num_frames_hand, 45))
+
+# Configuration settings for MJCF visualization
+mujoco_config = {
+    "data_path": os.path.join(
+        "reference", "data", "Cuboid_00-fps_60-smooth_5Hz-upsample.npz"
+    ),
+    "start_frame": 0,
+    "end_frame": 5000,  # Visualize specified frame range
+    "loop_animation": True,  # Whether to loop the animation
+}

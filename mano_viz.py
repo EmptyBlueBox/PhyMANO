@@ -4,7 +4,7 @@ import numpy as np
 import rerun as rr
 import torch
 
-from config import hand_pose, hand_shape, num_frames_hand
+from config import hand_rest_pose, hand_shape, num_frames_hand
 from utils_mano import generate_mano_submeshes
 from utils_mesh import compute_vertex_normals
 
@@ -36,7 +36,7 @@ def main():
     hand_parms = {
         "global_orient": torch.zeros((num_frames_hand, 3), dtype=torch.float32),
         "transl": torch.zeros((num_frames_hand, 3), dtype=torch.float32),
-        "hand_pose": torch.tensor(hand_pose, dtype=torch.float32),
+        "hand_pose": torch.tensor(hand_rest_pose, dtype=torch.float32),
         "betas": torch.tensor(hand_shape, dtype=torch.float32),
     }
 

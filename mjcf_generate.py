@@ -6,7 +6,7 @@ import torch
 import trimesh
 from scipy.spatial import ConvexHull
 
-from config import hand_pose, hand_shape, num_frames_hand
+from config import hand_rest_pose, hand_shape, num_frames_hand
 from utils_mano import generate_mano_submeshes
 
 
@@ -275,13 +275,13 @@ def main():
     # we apply a 90-degree rotation around the world's X-axis. This corresponds to
     # a `global_orient` of [pi/2, 0, 0] in axis-angle representation.
     hand_parms = {
-        "global_orient": torch.tensor([[np.pi / 2, 0, 0]], dtype=torch.float32).repeat(
+        "global_orient": torch.tensor([[0, 0, 0]], dtype=torch.float32).repeat(
             num_frames_hand, 1
         ),
-        "transl": torch.tensor([[0, 0, 1.5]], dtype=torch.float32).repeat(
+        "transl": torch.tensor([[0, 0, 0.5]], dtype=torch.float32).repeat(
             num_frames_hand, 1
         ),
-        "hand_pose": torch.tensor(hand_pose, dtype=torch.float32),
+        "hand_pose": torch.tensor(hand_rest_pose, dtype=torch.float32),
         "betas": torch.tensor(hand_shape, dtype=torch.float32),
     }
     # Generate submeshes and other MANO data using the utility function
