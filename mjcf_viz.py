@@ -36,22 +36,22 @@ def main():
         return
 
     print("\nStarting MuJoCo simulation. Close the viewer to exit.")
-    print("The hand will move with random control inputs to test the physics.")
+    print(
+        "The hand will move to a fixed random target position using position control."
+    )
 
     with mujoco.viewer.launch_passive(model, data) as viewer:
-        last_update_time = time.time()
-        control_update_interval = 0.1  # Update controls every 100ms
+        # Generate a fixed random target position for all actuators
+        target_positions = None
+        if model.nu > 0:  # Only generate targets if actuators exist
+            target_positions = np.random.uniform(low=-np.pi, high=np.pi, size=model.nu)
+            data.ctrl[:] = target_positions
+            print(f"Set fixed target positions: {target_positions}")
+            print(f"Total actuators: {model.nu} (3 per ball joint)")
+            print("Each ball joint controlled by 3 actuators for X, Y, Z rotation")
 
         while viewer.is_running():
             step_start = time.time()
-
-            current_time = time.time()
-            if current_time - last_update_time > control_update_interval:
-                # Apply random control signals to the actuators
-                if model.nu > 0:  # Only apply controls if actuators exist
-                    random_ctrl = np.random.uniform(low=-1.0, high=1.0, size=model.nu)
-                    data.ctrl[:] = random_ctrl
-                last_update_time = current_time
 
             mujoco.mj_step(model, data)
 

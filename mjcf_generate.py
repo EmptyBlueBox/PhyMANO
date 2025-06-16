@@ -173,14 +173,21 @@ def generate_mujoco_xml(submeshes, joint_positions, colors, mjcf_path, mesh_dir)
             joint_pos = joint_positions[i] - center
             joint_pos_str = f"{joint_pos[0]:.3f} {joint_pos[1]:.3f} {joint_pos[2]:.3f}"
             joint_xml = f'<joint name="joint_{i}" type="ball" pos="{joint_pos_str}" limited="false" stiffness="200" damping="5"/>'
+            # Create 3 actuators for 3 DOF of ball joint
             actuator_xml_parts.append(
-                f'<motor name="motor_{i}" joint="joint_{i}" ctrllimited="true" ctrlrange="-1.0 1.0" gear="1"/>'
+                f'<position name="motor_{i}_x" joint="joint_{i}" gear="1 0 0" ctrllimited="true" ctrlrange="-3.14 3.14" kp="100"/>'
+            )
+            actuator_xml_parts.append(
+                f'<position name="motor_{i}_y" joint="joint_{i}" gear="0 1 0" ctrllimited="true" ctrlrange="-3.14 3.14" kp="100"/>'
+            )
+            actuator_xml_parts.append(
+                f'<position name="motor_{i}_z" joint="joint_{i}" gear="0 0 1" ctrllimited="true" ctrlrange="-3.14 3.14" kp="100"/>'
             )
 
         body_xml_parts[i] = f"""<body name="body_{i}" pos="{pos_str}">
             {joint_xml}
             <inertial pos="{cm_pos_str}" mass="{mass:.6f}" fullinertia="{inertia_str}"/>
-            <geom type="mesh" mesh="mesh_{i}" rgba="{color_str}" contype="1" conaffinity="2"/>"""
+            <geom type="mesh" mesh="mesh_{i}" rgba="{color_str}" contype="1" conaffinity="2" material="hand_mat"/>"""
 
     # Assemble the nested body XML structure
     # Start with closing tags for all bodies
@@ -211,18 +218,32 @@ def generate_mujoco_xml(submeshes, joint_positions, colors, mjcf_path, mesh_dir)
         </default>
 
         <visual>
-            <headlight active="0" ambient="0.3 0.3 0.3" diffuse="0.4 0.4 0.4" specular="0.1 0.1 0.1"/>
-            <map znear="0.01" zfar="50"/>
-            <quality shadowsize="4096"/>
+            <headlight active="0" ambient="0.4 0.4 0.4" diffuse="0.6 0.6 0.6" specular="0.2 0.2 0.2"/>
+            <map znear="0.01" zfar="50" shadowclip="0.5"/>
+            <quality shadowsize="8192" offsamples="8"/>
+            <global azimuth="120" elevation="-20"/>
         </visual>
 
         <asset>
             {asset_xml}
+            
+            <!-- Materials for better lighting -->
+            <material name="ground_mat" reflectance="0.1" shininess="0.1" specular="0.2"/>
+            <material name="hand_mat" reflectance="0.05" shininess="0.3" specular="0.4"/>
         </asset>
 
         <worldbody>
-            <light pos="0 0 5" dir="0 0 -1" diffuse="0.8 0.8 0.8" specular="0.2 0.2 0.2"/>
-            <geom type="plane" size="2 2 0.1" rgba="0.8 0.8 0.8 1" name="ground" contype="2" conaffinity="1"/>
+            <!-- Main key light -->
+            <light name="sun" pos="2 2 4" dir="-0.3 -0.3 -1" diffuse="1.0 0.95 0.8" specular="0.3 0.3 0.3" castshadow="true"/>
+            <!-- Fill light from opposite side -->
+            <light name="fill" pos="-1.5 -1 3" dir="0.2 0.1 -1" diffuse="0.6 0.7 0.9" specular="0.1 0.1 0.1"/>
+            <!-- Bottom fill for hand palm -->
+            <light name="bottom" pos="0 0 -1" dir="0 0 1" diffuse="0.4 0.4 0.5" specular="0.05 0.05 0.05"/>
+            <!-- Rim light for better definition -->
+            <light name="rim" pos="0 3 2" dir="0 -1 -0.3" diffuse="0.3 0.3 0.4" specular="0.1 0.1 0.1"/>
+            
+            <geom type="plane" size="2 2 0.1" rgba="0.9 0.9 0.9 1" name="ground" contype="2" conaffinity="1" 
+                  material="ground_mat"/>
             {root_body_xml}
         </worldbody>
 
@@ -257,7 +278,7 @@ def main():
         "global_orient": torch.tensor([[np.pi / 2, 0, 0]], dtype=torch.float32).repeat(
             num_frames_hand, 1
         ),
-        "transl": torch.tensor([[0, 0, 0.5]], dtype=torch.float32).repeat(
+        "transl": torch.tensor([[0, 0, 1.5]], dtype=torch.float32).repeat(
             num_frames_hand, 1
         ),
         "hand_pose": torch.tensor(hand_pose, dtype=torch.float32),
