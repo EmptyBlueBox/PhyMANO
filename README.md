@@ -69,3 +69,41 @@ mjpython mjcf_viz.py
 Generated files will be saved in the following locations:
 - **MJCF File**: `Models/mjcf/hand.xml`
 - **Mesh Files**: `Models/mjcf/mesh/submesh_*.obj`
+
+## MANO-URDF Integration
+
+### File Structure
+1. **`urdf_generate.py`** - URDF File Generation
+   - Generate MANO hand meshes and submeshes
+   - Calculate physical properties (mass, inertia tensors, etc.)
+   - Create URDF XML configuration files
+   - Save mesh resource files (OBJ format)
+
+### Usage
+
+#### 1. Generate URDF Model Files
+
+```bash
+python urdf_generate.py
+```
+
+#### 2. Visualization Testing
+
+Install [Rerun urdf plugin](https://github.com/rerun-io/rerun-loader-python-example-urdf):
+
+```bash
+pipx install git+https://github.com/rerun-io/rerun-loader-python-example-urdf.git
+pipx ensurepath
+```
+
+Run the visualization:
+
+```bash
+rerun-loader-urdf Models/urdf/hand.urdf
+```
+
+### Output Files
+
+Generated files will be saved in the following locations:
+- **URDF File**: `Models/urdf/hand.urdf`
+- **Mesh Files**: `Models/urdf/mesh/submesh_*.obj`
