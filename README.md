@@ -56,7 +56,7 @@ pip install -r requirements.txt
 python mjcf_generate.py
 ```
 
-#### 2. Visualization Testing
+#### 2. Visualization
 
 MacOS:
 
@@ -87,7 +87,7 @@ Generated files will be saved in the following locations:
 python urdf_generate.py
 ```
 
-#### 2. Visualization Testing
+#### 2. Visualization
 
 Install [Rerun urdf plugin](https://github.com/rerun-io/rerun-loader-python-example-urdf):
 
@@ -96,11 +96,19 @@ pipx install git+https://github.com/rerun-io/rerun-loader-python-example-urdf.gi
 pipx ensurepath
 ```
 
-Run the visualization:
+Open Rerun session and `OPEN` the URDF file:
 
 ```bash
-rerun-loader-urdf Models/urdf/hand.urdf
+rerun
 ```
+
+> [!NOTE]
+> This version of Rerun is compatible with the rerun urdf plugin.
+> ```bash
+> rerun --version
+> rerun-cli 0.19.0 [rustc 1.79.0 (129f3b996 2024-06-10), LLVM 18.1.7] aarch64-apple-darwin release-0.19.0 5efb166, built 2024-10-17T14:03:21Z
+> Video features: av1 nasm
+> ```
 
 ### Output Files
 
