@@ -86,7 +86,6 @@ def generate_urdf_xml(submeshes, joint_positions, colors, urdf_path, mesh_dir):
     """
     # Create mesh directory if it doesn't exist
     os.makedirs(mesh_dir, exist_ok=True)
-    urdf_dir = os.path.dirname(urdf_path)
 
     link_xml_parts = []
     joint_xml_parts = []
@@ -165,23 +164,36 @@ def generate_urdf_xml(submeshes, joint_positions, colors, urdf_path, mesh_dir):
         with open(obj_save_path, "w") as f:
             f.write(obj_data)
 
-        # Use a relative path for the mesh file in the XML
-        mesh_xml_path = os.path.relpath(obj_save_path, urdf_dir)
+        # Fix relative path issue: use forward slashes and proper relative path
+        mesh_xml_path = f"mesh/{obj_filename}"
 
         color = colors[submesh["joint_idx"]]
         color_str = f"{color[0] / 255:.3f} {color[1] / 255:.3f} {color[2] / 255:.3f} 1"
+
+        # Calculate visual/collision offset from joint to mesh center
+        # In URDF, each link's coordinate frame should be at the joint position
+        # The mesh needs to be offset from the joint to its geometric center
+        if i == 0:  # Root link (wrist) - use mesh center as link origin
+            visual_offset = [0, 0, 0]
+            inertial_offset = cm  # Center of mass relative to mesh center
+        else:
+            # For child links, offset the visual from joint position to mesh center
+            joint_world_pos = joint_positions[i]
+            visual_offset = center - joint_world_pos
+            # Inertial properties are relative to the joint (link origin)
+            inertial_offset = cm + visual_offset
 
         # Create link XML
         link_xml = f"""
     <link name="{joint_names[i]}">
         <inertial>
-            <origin xyz="{cm[0]:.6f} {cm[1]:.6f} {cm[2]:.6f}" rpy="0 0 0"/>
+            <origin xyz="{inertial_offset[0]:.6f} {inertial_offset[1]:.6f} {inertial_offset[2]:.6f}" rpy="0 0 0"/>
             <mass value="{mass:.6f}"/>
             <inertia ixx="{ixx:.6e}" ixy="{ixy:.6e}" ixz="{ixz:.6e}" 
                      iyy="{iyy:.6e}" iyz="{iyz:.6e}" izz="{izz:.6e}"/>
         </inertial>
         <visual>
-            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <origin xyz="{visual_offset[0]:.6f} {visual_offset[1]:.6f} {visual_offset[2]:.6f}" rpy="0 0 0"/>
             <geometry>
                 <mesh filename="{mesh_xml_path}"/>
             </geometry>
@@ -190,7 +202,7 @@ def generate_urdf_xml(submeshes, joint_positions, colors, urdf_path, mesh_dir):
             </material>
         </visual>
         <collision>
-            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <origin xyz="{visual_offset[0]:.6f} {visual_offset[1]:.6f} {visual_offset[2]:.6f}" rpy="0 0 0"/>
             <geometry>
                 <mesh filename="{mesh_xml_path}"/>
             </geometry>
@@ -202,17 +214,24 @@ def generate_urdf_xml(submeshes, joint_positions, colors, urdf_path, mesh_dir):
         # Create joint XML (skip for root link)
         parent_idx = parents[i]
         if parent_idx != -1:  # Not root body
-            parent_center = submesh_centers[parent_idx]
-            relative_pos = center - parent_center
+            # In URDF with our coordinate system:
+            # - Parent link's coordinate frame is at parent joint position (or mesh center for root)
+            # - Child link's coordinate frame is at child joint position
+            # - Joint origin is the child joint position relative to parent's coordinate frame
 
-            # Joint position relative to parent's center
-            joint_pos = joint_positions[i] - parent_center
+            if parent_idx == 0:  # Parent is root (wrist), uses mesh center as origin
+                parent_origin = submesh_centers[parent_idx]
+            else:  # Parent uses joint position as origin
+                parent_origin = joint_positions[parent_idx]
+
+            child_joint_pos = joint_positions[i]
+            joint_origin = child_joint_pos - parent_origin
 
             joint_xml = f"""
     <joint name="joint_{i}" type="continuous">
         <parent link="{joint_names[parent_idx]}"/>
         <child link="{joint_names[i]}"/>
-        <origin xyz="{joint_pos[0]:.6f} {joint_pos[1]:.6f} {joint_pos[2]:.6f}" rpy="0 0 0"/>
+        <origin xyz="{joint_origin[0]:.6f} {joint_origin[1]:.6f} {joint_origin[2]:.6f}" rpy="0 0 0"/>
         <axis xyz="0 0 1"/>
         <limit effort="10" velocity="10"/>
         <dynamics damping="0.1" friction="0.0"/>
