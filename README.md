@@ -2,6 +2,21 @@
 
 Simulate MANO in physics simulators.
 
+<p align="center">
+  <table>
+    <tr>
+      <td align="center">
+        <img src="./README.assets/mjcf.png" alt="MJCF visualization" style="zoom:20%;"/><br>
+        <em>Figure 1: MANO hand model in MuJoCo (MJCF format)</em>
+      </td>
+      <td align="center">
+        <img src="./README.assets/urdf.png" alt="URDF visualization" style="zoom:20%;"/><br>
+        <em>Figure 2: MANO hand model in a URDF-compatible Rerun session</em>
+      </td>
+    </tr>
+  </table>
+</p>
+
 ## Prerequisites
 
 ### Downloading models
